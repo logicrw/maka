@@ -5,7 +5,15 @@ import {
   validateConnectionBaseUrl,
   validateSlug,
 } from '../llm-connections.js';
-import { CATALOG_PROVIDER_TYPES, PROVIDER_REGISTRY } from '../provider-registry.js';
+import {
+  GENERATED_MODELS_DEV_METADATA,
+  GENERATED_MODELS_DEV_ZERO_COST_MODEL_IDS,
+} from '../model-metadata.generated.js';
+import {
+  CATALOG_PROVIDER_TYPES,
+  OPENCODE_FREE_DEFAULT_ENABLED_MODELS,
+  PROVIDER_REGISTRY,
+} from '../provider-registry.js';
 
 describe('provider connection slug derivation contract', () => {
   it('continues through dense collisions until it finds an unused slug', () => {
@@ -49,6 +57,28 @@ describe('provider catalog contract — structural invariants over CATALOG_PROVI
         isCustomConnection,
         `${type} has no baseUrl, no baseUrlTemplate, and is not a custom connection — it cannot source an endpoint`,
       );
+    }
+  });
+
+  // opencode-free is anonymous: a user reaches these models without an account
+  // or a payment method, so anything offered here must actually be free to
+  // call, and the ids Maka enables by default must stay reachable. The set is
+  // derived from the snapshot, so upstream is what can break this, not an edit.
+  it('offers OpenCode Free only zero-rate, active, tool-capable models, including every default-enabled id', () => {
+    const offered = PROVIDER_REGISTRY['opencode-free'].fallbackModels;
+
+    assert.ok(offered.length > 0, 'opencode-free must offer at least one model');
+    for (const id of offered) {
+      assert.ok(
+        GENERATED_MODELS_DEV_ZERO_COST_MODEL_IDS.opencode.includes(id),
+        `${id} is offered anonymously but the opencode snapshot publishes a rate for it`,
+      );
+      const model = GENERATED_MODELS_DEV_METADATA.opencode[id];
+      assert.equal(model?.capabilities?.functionCalling, true, `${id} must be tool-capable`);
+      assert.notEqual(model?.lifecycle, 'deprecated', `${id} must not be deprecated upstream`);
+    }
+    for (const id of OPENCODE_FREE_DEFAULT_ENABLED_MODELS) {
+      assert.ok(offered.includes(id), `default-enabled ${id} must still be offered`);
     }
   });
 });
