@@ -96,6 +96,7 @@ export async function main(argv = process.argv) {
 
   const generated = {};
   const generatedPricing = [];
+  const generatedZeroCostModelIds = {};
   const generatedProviders = {};
   const generatedModelProviderOverrides = {};
   const directory = {};
@@ -139,6 +140,10 @@ export async function main(argv = process.argv) {
         .filter(([, model]) => model.provider !== undefined)
         .map(([id, model]) => [id, toModelProviderOverride(sourceId, id, model.provider)]),
     );
+    generatedZeroCostModelIds[providerType] = Object.entries(provider.models)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .filter(([, model]) => isZeroCost(model.cost))
+      .map(([id]) => id);
     if (!PRICING_EXCLUDED_PROVIDER_TYPES.has(providerType)) {
       generatedPricing.push(
         ...Object.entries(provider.models)
@@ -177,6 +182,17 @@ export async function main(argv = process.argv) {
   );
   for (const [provider, facts] of Object.entries(generatedProviders)) {
     lines.push(`  ${JSON.stringify(provider)}: ${JSON.stringify(facts)},`);
+  }
+  lines.push('};', '');
+  lines.push(
+    '// Models whose published input AND output rates are both zero. On a plan or',
+    '// subscription access path a zero rate means "not priced per token", not',
+    '// "free" — read this with the access path in mind, and apply your own',
+    '// policy (lifecycle, capabilities) on top.',
+    `export const GENERATED_MODELS_DEV_ZERO_COST_MODEL_IDS: Record<${providerTypeUnion}, readonly string[]> = {`,
+  );
+  for (const [provider, ids] of Object.entries(generatedZeroCostModelIds)) {
+    lines.push(`  ${JSON.stringify(provider)}: ${JSON.stringify(ids)},`);
   }
   lines.push('};', '');
   lines.push('export const GENERATED_MODELS_DEV_DIRECTORY: Record<string, { api?: string }> = {');
@@ -331,6 +347,18 @@ export function toPricing(providerType, modelId, model) {
     ...(cacheReadUsdPer1M !== undefined ? { cacheReadUsdPer1M } : {}),
     ...(cacheWriteUsdPer1M !== undefined ? { cacheWriteUsdPer1M } : {}),
   };
+}
+
+// A model carries no per-token rate only when both published rates are zero.
+// An absent or tiered cost is unknown, not zero.
+function isZeroCost(cost) {
+  return (
+    !!cost &&
+    typeof cost === 'object' &&
+    !Array.isArray(cost) &&
+    cost.input === 0 &&
+    cost.output === 0
+  );
 }
 
 function lifecycleForStatus(providerId, modelId, status) {

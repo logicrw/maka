@@ -17,7 +17,13 @@
       "!package-lock.json",
       // Generated shadcn/ui config — not hand-authored source.
       "!components.json"
-    ]
+    ],
+    // packages/core/src/model-metadata.generated.ts crossed Biome's 1 MiB
+    // default as the models.dev catalog grew, and an over-size file is
+    // silently skipped rather than failed: the check would keep passing while
+    // the file drifted out of format. Raise the ceiling instead of excluding
+    // it, so the generated snapshot stays formatted and linted.
+    "maxSize": 2097152
   },
   // Formatter enabled together with the one-time whole-tree baseline commit
   // in this PR (see .git-blame-ignore-revs) and a `biome format` check-mode

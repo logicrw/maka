@@ -3,6 +3,7 @@ import {
   GENERATED_MODELS_DEV_METADATA,
   GENERATED_MODELS_DEV_MODEL_PROVIDER_OVERRIDES,
   GENERATED_MODELS_DEV_PROVIDER_FACTS,
+  GENERATED_MODELS_DEV_ZERO_COST_MODEL_IDS,
 } from './model-metadata.generated.js';
 
 export const OPENCODE_FREE_DEFAULT_MODEL = 'nemotron-3-ultra-free';
@@ -593,26 +594,28 @@ const opencodeGoModelIds = toolCallingModelIds(
   ['minimax-m3'],
 ).filter((id) => GENERATED_MODELS_DEV_METADATA['opencode-go'][id]?.lifecycle !== 'deprecated');
 // opencode-free is Maka's first-class free anonymous default. It shares the
-// OpenCode Zen endpoint and model ids, but exposes only the active free
-// (cost.input === 0) models from the models.dev opencode snapshot. The
-// snapshot carries no cost field, so the free set is pinned here; each id is
-// validated against the opencode snapshot for active + tool-capable, mirroring
-// the bootstrap validation every other opencode plan entry performs.
-const opencodeFreeModelIds = [
-  OPENCODE_FREE_DEFAULT_MODEL,
-  'mimo-v2.5-free',
-  'big-pickle',
-  'deepseek-v4-flash-free',
-  'north-mini-code-free',
-  'laguna-s-2.1-free',
-] as const;
-for (const id of opencodeFreeModelIds) {
-  const model = GENERATED_MODELS_DEV_METADATA.opencode[id];
-  if (!model?.capabilities?.functionCalling || model.lifecycle === 'deprecated') {
-    throw new Error(
-      `models.dev opencode snapshot is missing an active tool-capable free model ${id} for opencode-free`,
-    );
-  }
+// OpenCode Zen endpoint and model ids, but exposes only the active,
+// tool-capable models the opencode snapshot publishes at a zero rate. The set
+// is derived from the snapshot rather than pinned here, so an upstream
+// deprecation retires a model instead of failing the bootstrap. What Maka
+// actually depends on is still asserted: toolCallingModelIds throws when a
+// default-enabled id is no longer offered at a zero rate, and the default
+// model must survive the lifecycle filter.
+const opencodeFreeModels = Object.fromEntries(
+  GENERATED_MODELS_DEV_ZERO_COST_MODEL_IDS.opencode.flatMap((id) => {
+    const model = GENERATED_MODELS_DEV_METADATA.opencode[id];
+    return model ? [[id, model] as const] : [];
+  }),
+);
+const opencodeFreeModelIds = toolCallingModelIds(
+  'OpenCode Free',
+  opencodeFreeModels,
+  OPENCODE_FREE_DEFAULT_ENABLED_MODELS,
+).filter((id) => GENERATED_MODELS_DEV_METADATA.opencode[id]?.lifecycle !== 'deprecated');
+if (!opencodeFreeModelIds.includes(OPENCODE_FREE_DEFAULT_MODEL)) {
+  throw new Error(
+    `models.dev opencode snapshot no longer offers ${OPENCODE_FREE_DEFAULT_MODEL} as an active tool-capable zero-rate model for opencode-free`,
+  );
 }
 const githubCopilot = GENERATED_MODELS_DEV_PROVIDER_FACTS['github-copilot'];
 if (githubCopilot.id !== 'github-copilot') {
